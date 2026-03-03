@@ -599,7 +599,7 @@ class PPTGenerator:
         
         return slide
     
-    def generate_from_json(self, content_json: Dict[str, Any], generate_images: bool = True) -> Presentation:
+    def generate_from_json(self, content_json: Dict[str, Any], generate_images: bool = True, progress_callback=None) -> Presentation:
         title = content_json.get("title", "演示文稿")
         pages = content_json.get("pages", [])
         
@@ -644,10 +644,19 @@ class PPTGenerator:
             self.image_service = ImageServiceFactory.get_service()
             print(f"[PPTGenerator] Image service initialized: {type(self.image_service).__name__}")
         
+        if progress_callback:
+            progress_callback(50, "正在创建标题页...")
+        
         self.create_title_slide(title)
         
+        total_pages = len(pages)
         for i, page in enumerate(pages):
+            page_progress = 50 + int((i / total_pages) * 35) if total_pages > 0 else 50
             page_title = page.get("title", f"第{i+1}页")
+            
+            if progress_callback:
+                progress_callback(page_progress, f"正在生成第 {i+1}/{total_pages} 页: {page_title}...")
+            
             page_content = page.get("content", [])
             layout_type = page.get("layout_type", "single_column")
             
@@ -657,9 +666,7 @@ class PPTGenerator:
             image_path = None
             should_generate = False
             
-            # Only generate image if no charts or tables are present
             if not charts and not tables:
-                # 每一页有 50% 的概率生成图片，除非该页已有图表
                 should_generate = (random.random() < 0.5) if generate_images else False
             else:
                 should_generate = False
@@ -700,6 +707,9 @@ class PPTGenerator:
                     image_path = None
             
             self.create_content_slide(page_title, page_content, layout_type, image_path, charts, tables)
+        
+        if progress_callback:
+            progress_callback(85, "正在创建结束页...")
         
         self.create_ending_slide()
         

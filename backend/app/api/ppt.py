@@ -82,6 +82,185 @@ def generate_ppt_task(
     ))
 
 
+def generate_ppt_task_with_ai(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    description: str,
+    page_count: int,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    import asyncio
+    asyncio.run(_generate_ppt_task_with_ai_async(
+        task_id, user_id, project_id, description, page_count, template_id, ai_model, db_url
+    ))
+
+
+def generate_ppt_task_with_outline(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    outline: dict,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    import asyncio
+    asyncio.run(_generate_ppt_task_with_outline_async(
+        task_id, user_id, project_id, outline, template_id, ai_model, db_url
+    ))
+
+
+def generate_ppt_task_with_document(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    text_content: str,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    import asyncio
+    asyncio.run(_generate_ppt_task_with_document_async(
+        task_id, user_id, project_id, text_content, template_id, ai_model, db_url
+    ))
+
+
+async def _generate_ppt_task_with_ai_async(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    description: str,
+    page_count: int,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.database import Base
+    
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(bind=engine)
+    
+    with SessionLocal() as db:
+        try:
+            generation_tasks[task_id] = {
+                "status": "processing",
+                "progress": 5,
+                "message": "正在初始化AI服务..."
+            }
+            
+            ai_service = AIServiceFactory.get_service(ai_model)
+            
+            generation_tasks[task_id]["progress"] = 10
+            generation_tasks[task_id]["message"] = "正在生成大纲..."
+            
+            outline = await ai_service.generate_outline(description, page_count)
+            
+            generation_tasks[task_id]["progress"] = 25
+            generation_tasks[task_id]["message"] = "正在扩展内容..."
+            
+            content_json = await ai_service.expand_content(outline)
+            
+            generation_tasks[task_id]["progress"] = 40
+            generation_tasks[task_id]["message"] = "正在准备生成PPT..."
+            
+            project = db.execute(
+                select(PPTProject).where(PPTProject.id == project_id)
+            ).scalar_one_or_none()
+            
+            if not project:
+                generation_tasks[task_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "message": "项目不存在"
+                }
+                return
+            
+            project.title = content_json.get("title", "未命名PPT")
+            project.content_json = content_json
+            db.commit()
+            
+            template = None
+            if template_id:
+                template = db.execute(
+                    select(Template).where(Template.id == template_id)
+                ).scalar_one_or_none()
+            
+            if template and template.template_data:
+                content_json["theme"] = template.template_data
+            
+            generation_tasks[task_id]["progress"] = 45
+            generation_tasks[task_id]["message"] = "正在生成PPT幻灯片..."
+            
+            generator = PPTGenerator()
+            generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            generation_tasks[task_id]["progress"] = 85
+            generation_tasks[task_id]["message"] = "正在保存文件..."
+            
+            ppt_bytes = generator.save_to_bytes()
+            
+            generation_tasks[task_id]["progress"] = 90
+            generation_tasks[task_id]["message"] = "正在上传文件..."
+            
+            storage = get_storage_service()
+            file_url = await storage.upload_bytes(
+                ppt_bytes,
+                folder="ppt",
+                filename=f"{content_json.get('title', '未命名PPT')}.pptx"
+            )
+            
+            project.file_url = file_url
+            project.file_size = len(ppt_bytes)
+            project.status = "completed"
+            project.page_count = len(content_json.get("pages", []))
+            db.commit()
+            
+            history = GenerationHistory(
+                user_id=user_id,
+                project_id=project_id,
+                input_type="text",
+                ai_model=ai_model,
+                status="success"
+            )
+            db.add(history)
+            db.commit()
+            
+            generation_tasks[task_id] = {
+                "status": "completed",
+                "progress": 100,
+                "message": "PPT生成完成",
+                "result": {
+                    "project_id": project_id,
+                    "file_url": file_url
+                }
+            }
+            
+        except Exception as e:
+            generation_tasks[task_id] = {
+                "status": "failed",
+                "progress": 0,
+                "message": str(e)
+            }
+            
+            project = db.execute(
+                select(PPTProject).where(PPTProject.id == project_id)
+            ).scalar_one_or_none()
+            if project:
+                project.status = "failed"
+                db.commit()
+
+
+def update_progress(task_id: str, progress: int, message: str):
+    if task_id in generation_tasks:
+        generation_tasks[task_id]["progress"] = progress
+        generation_tasks[task_id]["message"] = message
+
+
 async def _generate_ppt_task_async(
     task_id: str,
     user_id: int,
@@ -128,13 +307,19 @@ async def _generate_ppt_task_async(
                 content_json["theme"] = template.template_data
                 print(f"[DEBUG] generate_ppt_task: Injected theme data: {template.template_data}")
             
-            generator = PPTGenerator()
-            generator.generate_from_json(content_json)
+            generation_tasks[task_id]["progress"] = 20
+            generation_tasks[task_id]["message"] = "正在生成PPT幻灯片..."
             
-            generation_tasks[task_id]["progress"] = 50
+            generator = PPTGenerator()
+            generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            generation_tasks[task_id]["progress"] = 85
             generation_tasks[task_id]["message"] = "正在保存文件..."
             
             ppt_bytes = generator.save_to_bytes()
+            
+            generation_tasks[task_id]["progress"] = 90
+            generation_tasks[task_id]["message"] = "正在上传文件..."
             
             storage = get_storage_service()
             file_url = await storage.upload_bytes(
@@ -153,6 +338,253 @@ async def _generate_ppt_task_async(
                 user_id=user_id,
                 project_id=project_id,
                 input_type="text",
+                ai_model=ai_model,
+                status="success"
+            )
+            db.add(history)
+            db.commit()
+            
+            generation_tasks[task_id] = {
+                "status": "completed",
+                "progress": 100,
+                "message": "PPT生成完成",
+                "result": {
+                    "project_id": project_id,
+                    "file_url": file_url
+                }
+            }
+            
+        except Exception as e:
+            generation_tasks[task_id] = {
+                "status": "failed",
+                "progress": 0,
+                "message": str(e)
+            }
+            
+            project = db.execute(
+                select(PPTProject).where(PPTProject.id == project_id)
+            ).scalar_one_or_none()
+            if project:
+                project.status = "failed"
+                db.commit()
+
+
+async def _generate_ppt_task_with_outline_async(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    outline: dict,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.database import Base
+    
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(bind=engine)
+    
+    with SessionLocal() as db:
+        try:
+            generation_tasks[task_id] = {
+                "status": "processing",
+                "progress": 5,
+                "message": "正在初始化AI服务..."
+            }
+            
+            ai_service = AIServiceFactory.get_service(ai_model)
+            
+            generation_tasks[task_id]["progress"] = 10
+            generation_tasks[task_id]["message"] = "正在扩展内容..."
+            
+            content_json = await ai_service.expand_content(outline)
+            
+            generation_tasks[task_id]["progress"] = 25
+            generation_tasks[task_id]["message"] = "正在准备生成PPT..."
+            
+            project = db.execute(
+                select(PPTProject).where(PPTProject.id == project_id)
+            ).scalar_one_or_none()
+            
+            if not project:
+                generation_tasks[task_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "message": "项目不存在"
+                }
+                return
+            
+            project.title = content_json.get("title", "未命名PPT")
+            project.content_json = content_json
+            db.commit()
+            
+            template = None
+            if template_id:
+                template = db.execute(
+                    select(Template).where(Template.id == template_id)
+                ).scalar_one_or_none()
+            
+            if template and template.template_data:
+                content_json["theme"] = template.template_data
+            
+            generation_tasks[task_id]["progress"] = 30
+            generation_tasks[task_id]["message"] = "正在生成PPT幻灯片..."
+            
+            generator = PPTGenerator()
+            generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            generation_tasks[task_id]["progress"] = 85
+            generation_tasks[task_id]["message"] = "正在保存文件..."
+            
+            ppt_bytes = generator.save_to_bytes()
+            
+            generation_tasks[task_id]["progress"] = 90
+            generation_tasks[task_id]["message"] = "正在上传文件..."
+            
+            storage = get_storage_service()
+            file_url = await storage.upload_bytes(
+                ppt_bytes,
+                folder="ppt",
+                filename=f"{content_json.get('title', '未命名PPT')}.pptx"
+            )
+            
+            project.file_url = file_url
+            project.file_size = len(ppt_bytes)
+            project.status = "completed"
+            project.page_count = len(content_json.get("pages", []))
+            db.commit()
+            
+            history = GenerationHistory(
+                user_id=user_id,
+                project_id=project_id,
+                input_type="outline",
+                ai_model=ai_model,
+                status="success"
+            )
+            db.add(history)
+            db.commit()
+            
+            generation_tasks[task_id] = {
+                "status": "completed",
+                "progress": 100,
+                "message": "PPT生成完成",
+                "result": {
+                    "project_id": project_id,
+                    "file_url": file_url
+                }
+            }
+            
+        except Exception as e:
+            generation_tasks[task_id] = {
+                "status": "failed",
+                "progress": 0,
+                "message": str(e)
+            }
+            
+            project = db.execute(
+                select(PPTProject).where(PPTProject.id == project_id)
+            ).scalar_one_or_none()
+            if project:
+                project.status = "failed"
+                db.commit()
+
+
+async def _generate_ppt_task_with_document_async(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    text_content: str,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.database import Base
+    
+    engine = create_engine(db_url)
+    SessionLocal = sessionmaker(bind=engine)
+    
+    with SessionLocal() as db:
+        try:
+            generation_tasks[task_id] = {
+                "status": "processing",
+                "progress": 5,
+                "message": "正在初始化AI服务..."
+            }
+            
+            ai_service = AIServiceFactory.get_service(ai_model)
+            
+            generation_tasks[task_id]["progress"] = 10
+            generation_tasks[task_id]["message"] = "正在解析文档..."
+            
+            outline = await ai_service.parse_document(text_content)
+            
+            generation_tasks[task_id]["progress"] = 25
+            generation_tasks[task_id]["message"] = "正在扩展内容..."
+            
+            content_json = await ai_service.expand_content(outline)
+            
+            generation_tasks[task_id]["progress"] = 40
+            generation_tasks[task_id]["message"] = "正在准备生成PPT..."
+            
+            project = db.execute(
+                select(PPTProject).where(PPTProject.id == project_id)
+            ).scalar_one_or_none()
+            
+            if not project:
+                generation_tasks[task_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "message": "项目不存在"
+                }
+                return
+            
+            project.title = content_json.get("title", "未命名PPT")
+            project.content_json = content_json
+            db.commit()
+            
+            template = None
+            if template_id:
+                template = db.execute(
+                    select(Template).where(Template.id == template_id)
+                ).scalar_one_or_none()
+            
+            if template and template.template_data:
+                content_json["theme"] = template.template_data
+            
+            generation_tasks[task_id]["progress"] = 45
+            generation_tasks[task_id]["message"] = "正在生成PPT幻灯片..."
+            
+            generator = PPTGenerator()
+            generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            generation_tasks[task_id]["progress"] = 85
+            generation_tasks[task_id]["message"] = "正在保存文件..."
+            
+            ppt_bytes = generator.save_to_bytes()
+            
+            generation_tasks[task_id]["progress"] = 90
+            generation_tasks[task_id]["message"] = "正在上传文件..."
+            
+            storage = get_storage_service()
+            file_url = await storage.upload_bytes(
+                ppt_bytes,
+                folder="ppt",
+                filename=f"{content_json.get('title', '未命名PPT')}.pptx"
+            )
+            
+            project.file_url = file_url
+            project.file_size = len(ppt_bytes)
+            project.status = "completed"
+            project.page_count = len(content_json.get("pages", []))
+            db.commit()
+            
+            history = GenerationHistory(
+                user_id=user_id,
+                project_id=project_id,
+                input_type="document",
                 ai_model=ai_model,
                 status="success"
             )
@@ -206,34 +638,11 @@ async def generate_by_text(
             detail="Kimi模型仅限会员使用"
         )
     
-    ai_service = AIServiceFactory.get_service(data.ai_model.value)
-    
-    try:
-        outline = await ai_service.generate_outline(data.description, data.page_count)
-        content_json = await ai_service.expand_content(outline)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI生成失败: {str(e)}"
-        )
-    
-    if data.template_id:
-        template_result = await db.execute(
-            select(Template).where(Template.id == data.template_id)
-        )
-        template = template_result.scalar_one_or_none()
-        print(f"[DEBUG] Template ID: {data.template_id}, Template: {template}")
-        if template and template.template_data:
-            content_json["theme"] = template.template_data
-            print(f"[DEBUG] Injected theme data: {template.template_data}")
-    else:
-        print(f"[DEBUG] No template_id provided")
-    
     project = PPTProject(
         user_id=current_user.id,
-        title=content_json.get("title", "未命名PPT"),
+        title="正在生成...",
         template_id=data.template_id,
-        content_json=content_json,
+        content_json={},
         status="generating"
     )
     print(f"[DEBUG] Creating project with template_id={data.template_id}")
@@ -252,11 +661,12 @@ async def generate_by_text(
     }
     
     background_tasks.add_task(
-        generate_ppt_task,
+        generate_ppt_task_with_ai,
         task_id,
         current_user.id,
         project.id,
-        content_json,
+        data.description,
+        data.page_count,
         data.template_id,
         data.ai_model.value,
         settings.DATABASE_URL_SYNC
@@ -288,34 +698,16 @@ async def generate_by_outline(
             detail="Kimi模型仅限会员使用"
         )
     
-    ai_service = AIServiceFactory.get_service(data.ai_model.value)
-    
     outline = {
         "title": data.title,
         "pages": data.outline
     }
     
-    try:
-        content_json = await ai_service.expand_content(outline)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI生成失败: {str(e)}"
-        )
-    
-    if data.template_id:
-        template_result = await db.execute(
-            select(Template).where(Template.id == data.template_id)
-        )
-        template = template_result.scalar_one_or_none()
-        if template and template.template_data:
-            content_json["theme"] = template.template_data
-    
     project = PPTProject(
         user_id=current_user.id,
         title=data.title,
         template_id=data.template_id,
-        content_json=content_json,
+        content_json={},
         status="generating"
     )
     db.add(project)
@@ -332,11 +724,11 @@ async def generate_by_outline(
     }
     
     background_tasks.add_task(
-        generate_ppt_task,
+        generate_ppt_task_with_outline,
         task_id,
         current_user.id,
         project.id,
-        content_json,
+        outline,
         data.template_id,
         data.ai_model.value,
         settings.DATABASE_URL_SYNC
@@ -364,7 +756,7 @@ async def generate_by_document(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"免费用户每日生成次数已达上限（{settings.FREE_USER_DAILY_LIMIT}次）"
-    )
+        )
     
     if ai_model == AIModelEnum.KIMI and not current_user.is_member:
         raise HTTPException(
@@ -423,45 +815,13 @@ async def generate_by_document(
             detail="不支持的文件格式"
         )
     
-    # 打印文件内容预览，用于调试
     print(f"Extracted content preview (first 500 chars):\n{text_content[:500]}")
-    
-    ai_service = AIServiceFactory.get_service(ai_model.value)
-    print(f"[DEBUG] Using AI service: {type(ai_service).__name__}")
-    
-    try:
-        outline = await ai_service.parse_document(text_content)
-        print(f"[DEBUG] Outline parsed: {len(outline.get('pages', []))} pages")
-        content_json = await ai_service.expand_content(outline)
-        print(f"[DEBUG] Content expanded, checking for charts/tables...")
-        for i, page in enumerate(content_json.get("pages", [])):
-            charts = page.get("charts", [])
-            tables = page.get("tables", [])
-            print(f"[DEBUG] Page {i+1}: charts={len(charts)}, tables={len(tables)}")
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI生成失败: {str(e)}"
-        )
-    
-    if template_id:
-        print(f"[DEBUG] Template ID provided: {template_id}")
-        template_result = await db.execute(
-            select(Template).where(Template.id == template_id)
-        )
-        template = template_result.scalar_one_or_none()
-        print(f"[DEBUG] Template found: {template}")
-        if template and template.template_data:
-            content_json["theme"] = template.template_data
-            print(f"[DEBUG] Injected theme data for document: {template.template_data}")
-    else:
-        print(f"[DEBUG] No template_id provided for document")
     
     project = PPTProject(
         user_id=current_user.id,
-        title=content_json.get("title", "未命名PPT"),
+        title="正在生成...",
         template_id=template_id,
-        content_json=content_json,
+        content_json={},
         status="generating"
     )
     print(f"[DEBUG] Creating document project with template_id={template_id}")
@@ -480,11 +840,11 @@ async def generate_by_document(
     }
     
     background_tasks.add_task(
-        generate_ppt_task,
+        generate_ppt_task_with_document,
         task_id,
         current_user.id,
         project.id,
-        content_json,
+        text_content,
         template_id,
         ai_model.value,
         settings.DATABASE_URL_SYNC
