@@ -100,9 +100,9 @@
         </div>
         <div class="preview-content">
           <div class="ppt-preview" v-if="currentSlide">
-            <div class="preview-slide">
-              <h2 class="slide-title">{{ currentSlide.title }}</h2>
-              <ul class="slide-content">
+            <div class="preview-slide" :style="previewSlideStyle">
+              <h2 class="slide-title" :style="{ color: themeStyle.titleColor }">{{ currentSlide.title }}</h2>
+              <ul class="slide-content" :style="{ color: themeStyle.contentColor }">
                 <li v-for="(item, index) in currentSlide.content" :key="index">
                   {{ item }}
                 </li>
@@ -131,8 +131,42 @@ const slides = ref([])
 const currentSlideIndex = ref(0)
 const exporting = ref(false)
 const loading = ref(false)
+const themeData = ref(null)
 
 const currentSlide = computed(() => slides.value[currentSlideIndex.value])
+
+const themeStyle = computed(() => {
+  if (!themeData.value) {
+    return {
+      backgroundColor: '#ffffff',
+      titleColor: '#0070c0',
+      contentColor: '#44546a'
+    }
+  }
+  
+  const theme = themeData.value
+  const bgColor = theme.background_color 
+    ? `rgb(${theme.background_color.join(',')})` 
+    : '#ffffff'
+  const primaryColor = theme.primary_color 
+    ? `rgb(${theme.primary_color.join(',')})` 
+    : '#0070c0'
+  const secondaryColor = theme.secondary_color 
+    ? `rgb(${theme.secondary_color.join(',')})` 
+    : '#44546a'
+  
+  return {
+    backgroundColor: bgColor,
+    titleColor: primaryColor,
+    contentColor: secondaryColor
+  }
+})
+
+const previewSlideStyle = computed(() => {
+  return {
+    backgroundColor: themeStyle.value.backgroundColor
+  }
+})
 
 onMounted(async () => {
   if (projectId.value) {
@@ -146,6 +180,7 @@ async function loadProject() {
     const project = await pptApi.getProject(projectId.value)
     projectTitle.value = project.title
     slides.value = project.content_json?.pages || []
+    themeData.value = project.content_json?.theme || null
   } catch (error) {
     console.error(error)
   } finally {
@@ -161,7 +196,8 @@ async function saveProject() {
       title: projectTitle.value,
       content_json: {
         title: projectTitle.value,
-        pages: slides.value
+        pages: slides.value,
+        theme: themeData.value
       }
     })
   } catch (error) {
@@ -394,16 +430,14 @@ async function handleExport() {
   .ppt-preview {
     .preview-slide {
       aspect-ratio: 16/9;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       border-radius: 4px;
       padding: 20px;
-      color: #fff;
       
       .slide-title {
         font-size: 14px;
         margin-bottom: 12px;
         padding-bottom: 8px;
-        border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+        border-bottom: 2px solid rgba(0, 0, 0, 0.1);
       }
       
       .slide-content {

@@ -149,7 +149,7 @@ DEFAULT_TEMPLATES = [
             "theme": "education_green",
             "primary_color": [0, 128, 0],
             "secondary_color": [34, 139, 34],
-            "background_color": [250, 255, 250],
+            "background_color": [230, 245, 230],
             "accent_color": [255, 215, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -391,7 +391,13 @@ async def init_default_templates(db: AsyncSession):
         result = await db.execute(
             select(Template).where(Template.name == template_data["name"])
         )
-        if not result.scalar_one_or_none():
+        existing = result.scalar_one_or_none()
+        if existing:
+            existing.template_data = template_data["template_data"]
+            existing.description = template_data["description"]
+            existing.category = template_data["category"]
+            existing.is_premium = template_data["is_premium"]
+        else:
             template = Template(**template_data)
             db.add(template)
     await db.commit()

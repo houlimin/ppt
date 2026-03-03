@@ -603,28 +603,39 @@ class PPTGenerator:
         title = content_json.get("title", "演示文稿")
         pages = content_json.get("pages", [])
         
-        # 优先使用 content_json 中的 theme 配置（可能来自模板注入）
         theme_settings = content_json.get("theme")
         
         if theme_settings:
-            # 如果是字典类型，说明是完整的样式配置
             if isinstance(theme_settings, dict):
                 try:
+                    primary_color = theme_settings.get("primary_color", (0, 112, 192))
+                    secondary_color = theme_settings.get("secondary_color", (68, 84, 106))
+                    background_color = theme_settings.get("background_color", (255, 255, 255))
+                    accent_color = theme_settings.get("accent_color", (255, 192, 0))
+                    
+                    if isinstance(primary_color, list):
+                        primary_color = tuple(primary_color)
+                    if isinstance(secondary_color, list):
+                        secondary_color = tuple(secondary_color)
+                    if isinstance(background_color, list):
+                        background_color = tuple(background_color)
+                    if isinstance(accent_color, list):
+                        accent_color = tuple(accent_color)
+                    
                     custom_theme = ThemeConfig(
-                        primary_color=tuple(theme_settings.get("primary_color", (0, 112, 192))),
-                        secondary_color=tuple(theme_settings.get("secondary_color", (68, 84, 106))),
-                        background_color=tuple(theme_settings.get("background_color", (255, 255, 255))),
+                        primary_color=primary_color,
+                        secondary_color=secondary_color,
+                        background_color=background_color,
                         title_font=theme_settings.get("title_font", "微软雅黑"),
                         body_font=theme_settings.get("body_font", "微软雅黑"),
                         title_size=theme_settings.get("title_size", 44),
                         body_size=theme_settings.get("body_size", 18),
-                        accent_color=tuple(theme_settings.get("accent_color", (255, 192, 0)))
+                        accent_color=accent_color
                     )
                     self.set_theme(custom_theme)
                     print(f"[PPTGenerator] Applied custom theme from JSON: {theme_settings.get('theme', 'custom')}")
                 except Exception as e:
                     print(f"[PPTGenerator] Failed to apply custom theme: {e}")
-            # 如果是字符串，尝试从预设主题中加载
             elif isinstance(theme_settings, str) and theme_settings in THEMES:
                 self.theme = THEMES[theme_settings]
                 print(f"[PPTGenerator] Applied preset theme: {theme_settings}")

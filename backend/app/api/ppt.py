@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -67,7 +67,22 @@ async def increment_daily_usage(user: User, db: AsyncSession):
     await db.commit()
 
 
-async def generate_ppt_task(
+def generate_ppt_task(
+    task_id: str,
+    user_id: int,
+    project_id: int,
+    content_json: dict,
+    template_id: Optional[int],
+    ai_model: str,
+    db_url: str
+):
+    import asyncio
+    asyncio.run(_generate_ppt_task_async(
+        task_id, user_id, project_id, content_json, template_id, ai_model, db_url
+    ))
+
+
+async def _generate_ppt_task_async(
     task_id: str,
     user_id: int,
     project_id: int,
@@ -109,20 +124,11 @@ async def generate_ppt_task(
                     select(Template).where(Template.id == template_id)
                 ).scalar_one_or_none()
             
-            # 使用模板的主题配置，如果模板存在
-            theme_name = "business_blue"  # 默认主题
+            if template and template.template_data:
+                content_json["theme"] = template.template_data
+                print(f"[DEBUG] generate_ppt_task: Injected theme data: {template.template_data}")
             
-            # 如果选择了模板，优先使用模板的配置
-            if template:
-                # 方式1：如果模板定义了 theme 名称，使用该名称
-                if template.template_data and "theme" in template.template_data:
-                    theme_name = template.template_data["theme"]
-                
-                # 方式2：如果 content_json 中没有指定 theme，将模板的样式注入到 content_json
-                if "theme" not in content_json and template.template_data:
-                    content_json["theme"] = template.template_data
-            
-            generator = PPTGenerator(theme_name)
+            generator = PPTGenerator()
             generator.generate_from_json(content_json)
             
             generation_tasks[task_id]["progress"] = 50
@@ -185,6 +191,9 @@ async def generate_by_text(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db)
 ):
+    print(f"[DEBUG] generate_by_text called with data: {data}")
+    print(f"[DEBUG] template_id from request: {data.template_id}")
+    
     if not await check_daily_limit(current_user, db):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -208,6 +217,18 @@ async def generate_by_text(
             detail=f"AI生成失败: {str(e)}"
         )
     
+    if data.template_id:
+        template_result = await db.execute(
+            select(Template).where(Template.id == data.template_id)
+        )
+        template = template_result.scalar_one_or_none()
+        print(f"[DEBUG] Template ID: {data.template_id}, Template: {template}")
+        if template and template.template_data:
+            content_json["theme"] = template.template_data
+            print(f"[DEBUG] Injected theme data: {template.template_data}")
+    else:
+        print(f"[DEBUG] No template_id provided")
+    
     project = PPTProject(
         user_id=current_user.id,
         title=content_json.get("title", "未命名PPT"),
@@ -215,9 +236,11 @@ async def generate_by_text(
         content_json=content_json,
         status="generating"
     )
+    print(f"[DEBUG] Creating project with template_id={data.template_id}")
     db.add(project)
     await db.commit()
     await db.refresh(project)
+    print(f"[DEBUG] Project created: id={project.id}, template_id={project.template_id}")
     
     await increment_daily_usage(current_user, db)
     
@@ -280,6 +303,14 @@ async def generate_by_outline(
             detail=f"AI生成失败: {str(e)}"
         )
     
+    if data.template_id:
+        template_result = await db.execute(
+            select(Template).where(Template.id == data.template_id)
+        )
+        template = template_result.scalar_one_or_none()
+        if template and template.template_data:
+            content_json["theme"] = template.template_data
+    
     project = PPTProject(
         user_id=current_user.id,
         title=data.title,
@@ -324,9 +355,11 @@ async def generate_by_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_async_db),
     file: UploadFile = File(...),
-    template_id: Optional[int] = None,
-    ai_model: AIModelEnum = AIModelEnum.QWEN
+    template_id: Optional[int] = Form(None),
+    ai_model: AIModelEnum = Form(AIModelEnum.QWEN)
 ):
+    print(f"[DEBUG] generate_by_document called with template_id: {template_id}, ai_model: {ai_model}")
+    
     if not await check_daily_limit(current_user, db):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -403,6 +436,19 @@ async def generate_by_document(
             detail=f"AI生成失败: {str(e)}"
         )
     
+    if template_id:
+        print(f"[DEBUG] Template ID provided: {template_id}")
+        template_result = await db.execute(
+            select(Template).where(Template.id == template_id)
+        )
+        template = template_result.scalar_one_or_none()
+        print(f"[DEBUG] Template found: {template}")
+        if template and template.template_data:
+            content_json["theme"] = template.template_data
+            print(f"[DEBUG] Injected theme data for document: {template.template_data}")
+    else:
+        print(f"[DEBUG] No template_id provided for document")
+    
     project = PPTProject(
         user_id=current_user.id,
         title=content_json.get("title", "未命名PPT"),
@@ -410,9 +456,11 @@ async def generate_by_document(
         content_json=content_json,
         status="generating"
     )
+    print(f"[DEBUG] Creating document project with template_id={template_id}")
     db.add(project)
     await db.commit()
     await db.refresh(project)
+    print(f"[DEBUG] Document project created: id={project.id}, template_id={project.template_id}")
     
     await increment_daily_usage(current_user, db)
     

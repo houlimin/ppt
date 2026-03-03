@@ -173,20 +173,30 @@ class QwenService(AIService):
         }
         
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    self.base_url,
-                    headers=headers,
-                    json=payload
-                )
-                response.raise_for_status()
-                result = response.json()
-                if "output" in result and "text" in result["output"]:
-                    return result["output"]["text"]
-                elif "message" in result:
-                    raise ValueError(f"API Error: {result['message']}")
-                else:
-                    raise ValueError(f"Unexpected API response: {result}")
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=120.0) as client:
+                        response = await client.post(
+                            self.base_url,
+                            headers=headers,
+                            json=payload
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        if "output" in result and "text" in result["output"]:
+                            return result["output"]["text"]
+                        elif "message" in result:
+                            raise ValueError(f"API Error: {result['message']}")
+                        else:
+                            raise ValueError(f"Unexpected API response: {result}")
+                except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as e:
+                    if attempt < max_retries - 1:
+                        print(f"[QwenService] Retry {attempt + 1}/{max_retries} after error: {e}")
+                        import asyncio
+                        await asyncio.sleep(2)
+                        continue
+                    raise
         except httpx.HTTPStatusError as e:
             print(f"[QwenService] HTTP error: {e.response.text}")
             raise ValueError(f"AI服务请求失败: {e.response.status_code}")

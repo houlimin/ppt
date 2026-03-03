@@ -111,15 +111,18 @@
               <el-form-item label="选择模板">
                 <div style="display: flex; gap: 8px;">
                   <el-select
-                    v-model="selectedTemplate"
+                    v-model="selectedTemplateId"
+                    :label="selectedTemplateName"
                     placeholder="选择模板"
                     style="width: 100%"
+                    @change="onTemplateChange"
+                    filterable
                   >
                     <el-option
-                      v-for="template in templates"
-                      :key="template.id"
-                      :label="template.name"
-                      :value="template.id"
+                      v-for="item in templateOptions"
+                      :key="item.value"
+                      :label="item.label"
+                      :value="item.value"
                     />
                   </el-select>
                   <el-button :icon="Refresh" circle @click="loadTemplates" title="刷新模板" />
@@ -170,7 +173,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch, toRaw, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { pptApi } from '@/api/ppt'
@@ -188,6 +191,7 @@ const outlineTitle = ref('')
 const outlinePages = ref([
   { title: '', content: '' }
 ])
+const selectedTemplateId = ref(null)
 const selectedTemplate = ref(null)
 const selectedModel = ref('qwen')
 const templates = ref([])
@@ -197,6 +201,23 @@ const progressMessage = ref('')
 const progressStatus = ref('')
 const uploadRef = ref()
 const uploadedFile = ref(null)
+
+const templateOptions = computed(() => {
+  return templates.value.map(t => ({
+    value: t.id,
+    label: t.name
+  }))
+})
+
+const selectedTemplateName = computed(() => {
+  const template = templates.value.find(t => t.id === selectedTemplateId.value)
+  return template?.name || ''
+})
+
+function onTemplateChange(val) {
+  console.log('Template changed to:', val)
+  selectedTemplate.value = templates.value.find(t => t.id === val) || null
+}
 
 let pollInterval = null
 
@@ -216,7 +237,11 @@ async function loadTemplates() {
     console.log('Loaded templates:', response)
     templates.value = response.items
     if (templates.value.length > 0) {
-      selectedTemplate.value = templates.value[0].id
+      await nextTick()
+      const firstId = templates.value[0].id
+      console.log('Setting selectedTemplateId to:', firstId, typeof firstId)
+      selectedTemplateId.value = firstId
+      selectedTemplate.value = templates.value[0]
     }
   } catch (error) {
     console.error('Failed to load templates:', error)
@@ -248,13 +273,16 @@ async function handleGenerate() {
   progressMessage.value = '正在提交任务...'
   progressStatus.value = ''
   
+  const templateId = selectedTemplateId.value
+  console.log('Generating PPT with templateId:', templateId)
+  
   try {
     let response
     
     if (inputType.value === 'text') {
       response = await pptApi.generateByText({
         description: textDescription.value,
-        template_id: selectedTemplate.value,
+        template_id: templateId,
         ai_model: selectedModel.value,
         page_count: pageCount.value
       })
@@ -269,7 +297,7 @@ async function handleGenerate() {
       response = await pptApi.generateByOutline({
         title: outlineTitle.value,
         outline,
-        template_id: selectedTemplate.value,
+        template_id: templateId,
         ai_model: selectedModel.value
       })
     } else {
@@ -282,8 +310,8 @@ async function handleGenerate() {
       const formData = new FormData()
       formData.append('file', uploadedFile.value)
       formData.append('ai_model', selectedModel.value)
-      if (selectedTemplate.value) {
-        formData.append('template_id', selectedTemplate.value)
+      if (templateId) {
+        formData.append('template_id', templateId)
       }
       
       response = await pptApi.generateByDocument(formData)
@@ -413,6 +441,16 @@ async function pollGenerationStatus(taskId, projectId) {
       margin-top: 12px;
       color: #909399;
       font-size: 14px;
+    }
+  }
+}
+</style>
+
+<style lang="scss">
+.el-select {
+  .el-input__wrapper {
+    .el-input__inner {
+      color: #606266 !important;
     }
   }
 }
