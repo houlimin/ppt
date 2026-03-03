@@ -427,9 +427,17 @@ async def generate_by_document(
     print(f"Extracted content preview (first 500 chars):\n{text_content[:500]}")
     
     ai_service = AIServiceFactory.get_service(ai_model.value)
+    print(f"[DEBUG] Using AI service: {type(ai_service).__name__}")
     
     try:
-        content_json = await ai_service.parse_document(text_content)
+        outline = await ai_service.parse_document(text_content)
+        print(f"[DEBUG] Outline parsed: {len(outline.get('pages', []))} pages")
+        content_json = await ai_service.expand_content(outline)
+        print(f"[DEBUG] Content expanded, checking for charts/tables...")
+        for i, page in enumerate(content_json.get("pages", [])):
+            charts = page.get("charts", [])
+            tables = page.get("tables", [])
+            print(f"[DEBUG] Page {i+1}: charts={len(charts)}, tables={len(tables)}")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
