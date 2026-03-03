@@ -8,7 +8,14 @@ from app.api import api_router
 from app.services.template_service import init_default_templates
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+logging.getLogger('app.services.ppt_service').setLevel(logging.DEBUG)
+logging.getLogger('app.services.image_service').setLevel(logging.DEBUG)
+
 logger = logging.getLogger(__name__)
 
 

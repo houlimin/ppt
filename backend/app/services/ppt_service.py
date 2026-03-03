@@ -11,8 +11,13 @@ import os
 import random
 import asyncio
 import concurrent.futures
+import hashlib
+import json
+import logging
 
 from app.services.image_service import ImageServiceFactory
+
+logger = logging.getLogger(__name__)
 
 
 class ThemeConfig:
@@ -80,6 +85,16 @@ class PPTGenerator:
         self.prs.slide_height = Inches(7.5)
         self.theme = THEMES.get(theme_name, THEMES["business_blue"])
         self.image_service = None
+        self.image_cache = {}
+        self.image_config = {
+            "enabled": True,
+            "max_per_presentation": 5,
+            "probability": 0.6,
+            "retry_attempts": 2,
+            "timeout": 120,
+            "min_content_length": 20,
+            "skip_keywords": ["总结", "目录", "大纲", "结束", "感谢", "联系方式", "谢谢"]
+        }
     
     def set_theme(self, theme_config: ThemeConfig):
         self.theme = theme_config
@@ -633,23 +648,25 @@ class PPTGenerator:
                         accent_color=accent_color
                     )
                     self.set_theme(custom_theme)
-                    print(f"[PPTGenerator] Applied custom theme from JSON: {theme_settings.get('theme', 'custom')}")
+                    logger.info(f"Applied custom theme from JSON: {theme_settings.get('theme', 'custom')}")
                 except Exception as e:
-                    print(f"[PPTGenerator] Failed to apply custom theme: {e}")
+                    logger.error(f"Failed to apply custom theme: {e}")
             elif isinstance(theme_settings, str) and theme_settings in THEMES:
                 self.theme = THEMES[theme_settings]
-                print(f"[PPTGenerator] Applied preset theme: {theme_settings}")
+                logger.info(f"Applied preset theme: {theme_settings}")
         
-        if generate_images:
+        if generate_images and self.image_config["enabled"]:
             self.image_service = ImageServiceFactory.get_service()
-            print(f"[PPTGenerator] Image service initialized: {type(self.image_service).__name__}")
+            logger.info(f"Image service initialized: {type(self.image_service).__name__}")
         
         if progress_callback:
             progress_callback(50, "正在创建标题页...")
         
         self.create_title_slide(title)
         
+        generated_count = 0
         total_pages = len(pages)
+        
         for i, page in enumerate(pages):
             page_progress = 50 + int((i / total_pages) * 35) if total_pages > 0 else 50
             page_title = page.get("title", f"第{i+1}页")
@@ -664,56 +681,138 @@ class PPTGenerator:
             tables = page.get("tables", [])
             
             image_path = None
-            should_generate = False
             
-            if not charts and not tables:
-                should_generate = (random.random() < 0.5) if generate_images else False
-            else:
-                should_generate = False
+            should_generate = self._should_generate_image_for_page(
+                page_title=page_title,
+                page_content=page_content,
+                page_index=i,
+                total_pages=total_pages,
+                has_charts=bool(charts),
+                has_tables=bool(tables),
+                generated_count=generated_count,
+                generate_images=generate_images
+            )
             
-            print(f"[PPTGenerator] Page {i+1}: should_generate={should_generate}, has_charts={bool(charts)}, has_tables={bool(tables)}")
+            logger.info(f"Page {i+1}/{total_pages}: should_generate={should_generate}, has_charts={bool(charts)}, has_tables={bool(tables)}, generated_count={generated_count}")
             
             if should_generate and self.image_service:
                 image_prompt = self._generate_image_prompt(title, page_title, page_content)
-                print(f"[PPTGenerator] Generating image with prompt: {image_prompt[:100]}...")
-                try:
-                    import threading
-                    result_container = {'result': None, 'error': None}
-                    
-                    def run_async_in_thread():
-                        try:
-                            new_loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(new_loop)
-                            try:
-                                result_container['result'] = new_loop.run_until_complete(
-                                    self.image_service.generate_image(image_prompt)
-                                )
-                            finally:
-                                new_loop.close()
-                        except Exception as e:
-                            result_container['error'] = e
-                    
-                    thread = threading.Thread(target=run_async_in_thread)
-                    thread.start()
-                    thread.join(timeout=120)
-                    
-                    if result_container['error']:
-                        raise result_container['error']
-                    
-                    image_path = result_container['result']
-                    print(f"[PPTGenerator] Image result: {image_path}")
-                except Exception as e:
-                    print(f"[PPTGenerator] Failed to generate image for page {i+1}: {e}")
-                    image_path = None
+                logger.info(f"Generating image with prompt: {image_prompt[:100]}...")
+                
+                image_path = self._generate_image_with_retry(image_prompt)
+                
+                if image_path:
+                    generated_count += 1
+                    logger.info(f"Successfully generated image for page {i+1}, path: {image_path}")
+                    page["image_path"] = image_path
             
-            self.create_content_slide(page_title, page_content, layout_type, image_path, charts, tables)
+            self.create_content_slide(page_title, page_content, layout_type, page.get("image_path"), charts, tables)
         
         if progress_callback:
             progress_callback(85, "正在创建结束页...")
         
         self.create_ending_slide()
         
+        logger.info(f"PPT generation completed. Total images generated: {generated_count}")
+        
         return self.prs
+    
+    def _should_generate_image_for_page(
+        self,
+        page_title: str,
+        page_content: List[str],
+        page_index: int,
+        total_pages: int,
+        has_charts: bool,
+        has_tables: bool,
+        generated_count: int,
+        generate_images: bool
+    ) -> bool:
+        logger.info(f"_should_generate_image_for_page called: generate_images={generate_images}, enabled={self.image_config['enabled']}")
+        
+        if not generate_images or not self.image_config["enabled"]:
+            logger.info(f"Skipping image generation - disabled (generate_images={generate_images}, enabled={self.image_config['enabled']})")
+            return False
+        
+        if has_charts or has_tables:
+            logger.info(f"Skipping image generation - page has charts or tables")
+            return False
+        
+        if generated_count >= self.image_config["max_per_presentation"]:
+            logger.info(f"Skipping image generation - max limit reached ({self.image_config['max_per_presentation']})")
+            return False
+        
+        skip_keywords = self.image_config["skip_keywords"]
+        for keyword in skip_keywords:
+            if keyword in page_title:
+                logger.info(f"Skipping image generation - contains keyword: {keyword}")
+                return False
+        
+        content_text = " ".join(page_content) if page_content else ""
+        if len(content_text) < self.image_config["min_content_length"]:
+            logger.info(f"Skipping image generation - content too short ({len(content_text)} chars)")
+            return False
+        
+        random_val = random.random()
+        logger.info(f"Random value: {random_val}, threshold: {self.image_config['probability']}")
+        
+        if random_val >= self.image_config["probability"]:
+            logger.info(f"Skipping image generation - probability check failed")
+            return False
+        
+        logger.info(f"Will generate image for page: {page_title}")
+        return True
+    
+    def _generate_image_with_retry(self, prompt: str) -> Optional[str]:
+        cache_key = hashlib.md5(prompt.encode()).hexdigest()
+        
+        if cache_key in self.image_cache:
+            logger.info(f"Using cached image for prompt")
+            return self.image_cache[cache_key]
+        
+        for attempt in range(self.image_config["retry_attempts"]):
+            try:
+                import threading
+                result_container = {'result': None, 'error': None}
+                
+                def run_async_in_thread():
+                    try:
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        try:
+                            result_container['result'] = new_loop.run_until_complete(
+                                self.image_service.generate_image(prompt)
+                            )
+                        finally:
+                            new_loop.close()
+                    except Exception as e:
+                        result_container['error'] = e
+                
+                thread = threading.Thread(target=run_async_in_thread)
+                thread.start()
+                thread.join(timeout=self.image_config["timeout"])
+                
+                if result_container['error']:
+                    raise result_container['error']
+                
+                image_path = result_container['result']
+                
+                if image_path:
+                    self.image_cache[cache_key] = image_path
+                    logger.info(f"Image generated successfully on attempt {attempt + 1}")
+                    return image_path
+                else:
+                    logger.warning(f"Image generation returned None on attempt {attempt + 1}")
+                    
+            except Exception as e:
+                logger.error(f"Image generation failed on attempt {attempt + 1}: {e}")
+                if attempt < self.image_config["retry_attempts"] - 1:
+                    import time
+                    time.sleep(2)
+                    continue
+        
+        logger.error(f"Image generation failed after {self.image_config['retry_attempts']} attempts")
+        return None
     
     def _should_generate_image(self, page_title: str, page_index: int, total_pages: int) -> bool:
         return random.random() < 0.5
@@ -721,15 +820,71 @@ class PPTGenerator:
     def _generate_image_prompt(self, ppt_title: str, page_title: str, content: List[str]) -> str:
         content_text = " ".join(content) if content else ""
         
-        # 简化 Prompt 生成逻辑，提高成功率
-        prompt = f"Professional business presentation background image about {ppt_title} and {page_title}. "
-        prompt += "Style: Modern, Clean, Professional, High Quality, Photorealistic, 4K, No Text, No Watermark. "
+        style_keywords = {
+            "科技": "technology, futuristic, digital, innovation, circuit patterns, blue neon lights",
+            "商务": "business, corporate, professional, office, teamwork, modern workspace",
+            "教育": "education, learning, books, knowledge, academic, classroom",
+            "医疗": "medical, healthcare, hospital, medicine, doctor, health",
+            "金融": "finance, banking, money, investment, stock market, wealth",
+            "营销": "marketing, advertising, social media, digital marketing, growth",
+            "环保": "environment, green energy, sustainability, nature, eco-friendly",
+            "创新": "innovation, creativity, idea, lightbulb, breakthrough, startup"
+        }
         
-        # 如果有内容，提取前几个关键词（这里简单取前30个字符作为参考，实际应该用NLP提取）
+        detected_style = None
+        for keyword, style in style_keywords.items():
+            if keyword in ppt_title or keyword in page_title or keyword in content_text:
+                detected_style = style
+                break
+        
+        prompt_parts = []
+        
+        prompt_parts.append("Professional presentation background image")
+        
+        if detected_style:
+            prompt_parts.append(f"with {detected_style} theme")
+        
+        prompt_parts.append(f"related to: {page_title}")
+        
         if content_text:
-            prompt += f"Context: {content_text[:50]}..."
-            
+            keywords = self._extract_keywords(content_text, max_keywords=3)
+            if keywords:
+                prompt_parts.append(f"keywords: {', '.join(keywords)}")
+        
+        prompt_parts.extend([
+            "Style: Modern, Clean, Professional",
+            "Quality: High resolution, 4K, photorealistic",
+            "Requirements: No text, no watermark, no people faces, abstract or conceptual",
+            "Color scheme: Matching business presentation standards"
+        ])
+        
+        prompt = ". ".join(prompt_parts) + "."
+        
         return prompt
+    
+    def _extract_keywords(self, text: str, max_keywords: int = 3) -> List[str]:
+        import re
+        
+        stop_words = {
+            "的", "是", "在", "和", "了", "有", "我", "他", "她", "它", "们",
+            "这", "那", "就", "也", "都", "而", "及", "与", "或", "但",
+            "可以", "需要", "应该", "能够", "通过", "进行", "实现", "使用",
+            "一个", "这个", "那个", "这些", "那些", "其", "之", "以",
+            "为", "于", "上", "下", "中", "来", "去", "到", "从", "向"
+        }
+        
+        words = re.findall(r'[\u4e00-\u9fa5]{2,4}|[a-zA-Z]{3,}', text)
+        
+        word_freq = {}
+        for word in words:
+            if word.lower() not in stop_words and word not in stop_words:
+                word_freq[word] = word_freq.get(word, 0) + 1
+        
+        sorted_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)
+        
+        keywords = [word for word, freq in sorted_words[:max_keywords]]
+        
+        return keywords
     
     def save(self, file_path: str):
         self.prs.save(file_path)

@@ -190,7 +190,6 @@ async def _generate_ppt_task_with_ai_async(
                 content_json["theme"] = template.template_data
             
             project.title = content_json.get("title", "未命名PPT")
-            project.content_json = content_json
             db.commit()
             
             generation_tasks[task_id]["progress"] = 45
@@ -198,6 +197,9 @@ async def _generate_ppt_task_with_ai_async(
             
             generator = PPTGenerator()
             generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            project.content_json = content_json
+            db.commit()
             
             generation_tasks[task_id]["progress"] = 85
             generation_tasks[task_id]["message"] = "正在保存文件..."
@@ -308,7 +310,6 @@ async def _generate_ppt_task_async(
                 print(f"[DEBUG] generate_ppt_task: Injected theme data: {template.template_data}")
             
             project.title = content_json.get("title", "未命名PPT")
-            project.content_json = content_json
             db.commit()
             
             generation_tasks[task_id]["progress"] = 20
@@ -316,6 +317,9 @@ async def _generate_ppt_task_async(
             
             generator = PPTGenerator()
             generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            project.content_json = content_json
+            db.commit()
             
             generation_tasks[task_id]["progress"] = 85
             generation_tasks[task_id]["message"] = "正在保存文件..."
@@ -429,7 +433,6 @@ async def _generate_ppt_task_with_outline_async(
                 content_json["theme"] = template.template_data
             
             project.title = content_json.get("title", "未命名PPT")
-            project.content_json = content_json
             db.commit()
             
             generation_tasks[task_id]["progress"] = 30
@@ -437,6 +440,9 @@ async def _generate_ppt_task_with_outline_async(
             
             generator = PPTGenerator()
             generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            project.content_json = content_json
+            db.commit()
             
             generation_tasks[task_id]["progress"] = 85
             generation_tasks[task_id]["message"] = "正在保存文件..."
@@ -555,7 +561,6 @@ async def _generate_ppt_task_with_document_async(
                 content_json["theme"] = template.template_data
             
             project.title = content_json.get("title", "未命名PPT")
-            project.content_json = content_json
             db.commit()
             
             generation_tasks[task_id]["progress"] = 45
@@ -563,6 +568,9 @@ async def _generate_ppt_task_with_document_async(
             
             generator = PPTGenerator()
             generator.generate_from_json(content_json, progress_callback=lambda p, m: update_progress(task_id, p, m))
+            
+            project.content_json = content_json
+            db.commit()
             
             generation_tasks[task_id]["progress"] = 85
             generation_tasks[task_id]["message"] = "正在保存文件..."
