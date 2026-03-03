@@ -40,7 +40,7 @@
             <div class="template-preview" :style="getPreviewStyle(template)">
               <img v-if="template.thumbnail_url" :src="template.thumbnail_url" />
               <div v-else class="placeholder-preview">
-                <div class="color-preview" :style="{ background: getGradientStyle(template) }"></div>
+                <div class="color-preview" :style="getPreviewStyle(template)"></div>
               </div>
               <div class="template-badge" v-if="template.is_premium">
                 <el-tag type="warning" size="small">会员</el-tag>
@@ -74,7 +74,7 @@
             <div class="template-preview" :style="getPreviewStyle(template)">
               <img v-if="template.thumbnail_url" :src="template.thumbnail_url" />
               <div v-else class="placeholder-preview">
-                <div class="color-preview" :style="{ background: getGradientStyle(template) }"></div>
+                <div class="color-preview" :style="getPreviewStyle(template)"></div>
               </div>
               <div class="template-actions">
                 <el-button type="primary" size="small" @click.stop="handleUseTemplate(template)">
@@ -314,8 +314,9 @@ async function handleDeleteTemplate(template) {
 function getPreviewStyle(template) {
   const data = template.template_data || {}
   const primary = rgbToHex(data.primary_color) || '#0070C0'
+  const bgColor = rgbToHex(data.background_color) || '#FFFFFF'
   return {
-    background: primary
+    background: `linear-gradient(135deg, ${bgColor} 50%, ${primary} 100%)`
   }
 }
 

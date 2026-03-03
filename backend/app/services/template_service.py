@@ -67,7 +67,7 @@ DEFAULT_TEMPLATES = [
             "theme": "business_blue",
             "primary_color": [0, 112, 192],
             "secondary_color": [68, 84, 106],
-            "background_color": [255, 255, 255],
+            "background_color": [240, 248, 255],
             "accent_color": [255, 192, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -81,10 +81,10 @@ DEFAULT_TEMPLATES = [
         "is_system": True,
         "template_data": {
             "theme": "tech_dark_blue",
-            "primary_color": [0, 51, 102],
-            "secondary_color": [51, 102, 153],
-            "background_color": [240, 245, 250],
-            "accent_color": [0, 176, 240],
+            "primary_color": [0, 150, 255],
+            "secondary_color": [100, 180, 220],
+            "background_color": [20, 30, 50],
+            "accent_color": [0, 255, 200],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
         }
@@ -97,10 +97,10 @@ DEFAULT_TEMPLATES = [
         "is_system": True,
         "template_data": {
             "theme": "business_dark",
-            "primary_color": [51, 51, 51],
-            "secondary_color": [102, 102, 102],
-            "background_color": [245, 245, 245],
-            "accent_color": [0, 176, 80],
+            "primary_color": [220, 220, 220],
+            "secondary_color": [180, 180, 180],
+            "background_color": [35, 35, 40],
+            "accent_color": [100, 200, 150],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
         }
@@ -131,7 +131,7 @@ DEFAULT_TEMPLATES = [
             "theme": "finance_pro",
             "primary_color": [0, 64, 128],
             "secondary_color": [64, 128, 128],
-            "background_color": [250, 250, 252],
+            "background_color": [235, 242, 250],
             "accent_color": [218, 165, 32],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -147,10 +147,10 @@ DEFAULT_TEMPLATES = [
         "is_system": True,
         "template_data": {
             "theme": "education_green",
-            "primary_color": [0, 128, 0],
-            "secondary_color": [34, 139, 34],
-            "background_color": [230, 245, 230],
-            "accent_color": [255, 215, 0],
+            "primary_color": [34, 139, 34],
+            "secondary_color": [60, 179, 113],
+            "background_color": [220, 245, 220],
+            "accent_color": [255, 200, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
         }
@@ -165,7 +165,7 @@ DEFAULT_TEMPLATES = [
             "theme": "academic_serious",
             "primary_color": [70, 70, 70],
             "secondary_color": [100, 100, 100],
-            "background_color": [255, 255, 255],
+            "background_color": [250, 248, 240],
             "accent_color": [139, 69, 19],
             "title_font": "宋体",
             "body_font": "宋体"
@@ -181,8 +181,8 @@ DEFAULT_TEMPLATES = [
             "theme": "kindergarten",
             "primary_color": [255, 105, 180],
             "secondary_color": [255, 182, 193],
-            "background_color": [255, 250, 250],
-            "accent_color": [255, 165, 0],
+            "background_color": [255, 240, 245],
+            "accent_color": [255, 200, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
         }
@@ -197,7 +197,7 @@ DEFAULT_TEMPLATES = [
             "theme": "university_lecture",
             "primary_color": [0, 51, 102],
             "secondary_color": [102, 102, 153],
-            "background_color": [255, 255, 255],
+            "background_color": [245, 248, 252],
             "accent_color": [192, 192, 192],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -213,7 +213,7 @@ DEFAULT_TEMPLATES = [
             "theme": "online_course",
             "primary_color": [70, 130, 180],
             "secondary_color": [135, 206, 235],
-            "background_color": [248, 250, 252],
+            "background_color": [235, 245, 255],
             "accent_color": [255, 140, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -231,7 +231,7 @@ DEFAULT_TEMPLATES = [
             "theme": "creative_orange",
             "primary_color": [255, 102, 0],
             "secondary_color": [255, 153, 51],
-            "background_color": [255, 250, 245],
+            "background_color": [255, 245, 235],
             "accent_color": [0, 102, 204],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -245,9 +245,9 @@ DEFAULT_TEMPLATES = [
         "is_system": True,
         "template_data": {
             "theme": "artistic_purple",
-            "primary_color": [102, 51, 153],
-            "secondary_color": [153, 102, 204],
-            "background_color": [250, 248, 255],
+            "primary_color": [128, 0, 128],
+            "secondary_color": [186, 85, 211],
+            "background_color": [245, 240, 255],
             "accent_color": [255, 215, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -263,7 +263,7 @@ DEFAULT_TEMPLATES = [
             "theme": "fashion_pink",
             "primary_color": [255, 20, 147],
             "secondary_color": [255, 105, 180],
-            "background_color": [255, 245, 250],
+            "background_color": [255, 235, 245],
             "accent_color": [255, 182, 193],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -279,7 +279,7 @@ DEFAULT_TEMPLATES = [
             "theme": "nature_green",
             "primary_color": [60, 120, 60],
             "secondary_color": [144, 180, 75],
-            "background_color": [245, 255, 245],
+            "background_color": [235, 250, 235],
             "accent_color": [255, 200, 87],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -295,7 +295,7 @@ DEFAULT_TEMPLATES = [
             "theme": "vintage",
             "primary_color": [139, 90, 43],
             "secondary_color": [160, 120, 80],
-            "background_color": [252, 248, 240],
+            "background_color": [250, 240, 225],
             "accent_color": [205, 133, 63],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -313,7 +313,7 @@ DEFAULT_TEMPLATES = [
             "theme": "medical_health",
             "primary_color": [0, 128, 128],
             "secondary_color": [72, 209, 204],
-            "background_color": [245, 255, 255],
+            "background_color": [230, 250, 250],
             "accent_color": [255, 99, 71],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -327,10 +327,10 @@ DEFAULT_TEMPLATES = [
         "is_system": True,
         "template_data": {
             "theme": "tech_internet",
-            "primary_color": [30, 60, 114],
-            "secondary_color": [42, 82, 152],
-            "background_color": [240, 244, 248],
-            "accent_color": [0, 206, 209],
+            "primary_color": [100, 180, 255],
+            "secondary_color": [150, 200, 255],
+            "background_color": [25, 35, 55],
+            "accent_color": [0, 255, 200],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
         }
@@ -345,7 +345,7 @@ DEFAULT_TEMPLATES = [
             "theme": "construction",
             "primary_color": [139, 69, 19],
             "secondary_color": [160, 82, 45],
-            "background_color": [255, 252, 245],
+            "background_color": [250, 245, 235],
             "accent_color": [255, 140, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
@@ -361,8 +361,8 @@ DEFAULT_TEMPLATES = [
             "theme": "food_restaurant",
             "primary_color": [178, 34, 34],
             "secondary_color": [205, 92, 92],
-            "background_color": [255, 252, 248],
-            "accent_color": [255, 215, 0],
+            "background_color": [255, 248, 235],
+            "accent_color": [255, 200, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"
         }
@@ -377,7 +377,7 @@ DEFAULT_TEMPLATES = [
             "theme": "travel_vacation",
             "primary_color": [0, 139, 139],
             "secondary_color": [32, 178, 170],
-            "background_color": [240, 255, 255],
+            "background_color": [230, 250, 250],
             "accent_color": [255, 165, 0],
             "title_font": "微软雅黑",
             "body_font": "微软雅黑"

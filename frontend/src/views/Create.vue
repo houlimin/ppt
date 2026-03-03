@@ -174,7 +174,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch, toRaw, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { pptApi } from '@/api/ppt'
 import { templateApi } from '@/api/template'
@@ -182,6 +182,7 @@ import { ElMessage } from 'element-plus'
 import { Delete, Plus, UploadFilled, Refresh } from '@element-plus/icons-vue'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const inputType = ref('text')
@@ -238,10 +239,19 @@ async function loadTemplates() {
     templates.value = response.items
     if (templates.value.length > 0) {
       await nextTick()
-      const firstId = templates.value[0].id
-      console.log('Setting selectedTemplateId to:', firstId, typeof firstId)
-      selectedTemplateId.value = firstId
-      selectedTemplate.value = templates.value[0]
+      
+      const templateIdFromQuery = route.query.template_id
+      const targetId = templateIdFromQuery ? parseInt(templateIdFromQuery) : templates.value[0].id
+      
+      const targetTemplate = templates.value.find(t => t.id === targetId)
+      if (targetTemplate) {
+        selectedTemplateId.value = targetTemplate.id
+        selectedTemplate.value = targetTemplate
+        console.log('Selected template from query:', targetId, targetTemplate.name)
+      } else {
+        selectedTemplateId.value = templates.value[0].id
+        selectedTemplate.value = templates.value[0]
+      }
     }
   } catch (error) {
     console.error('Failed to load templates:', error)
