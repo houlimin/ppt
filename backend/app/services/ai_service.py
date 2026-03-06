@@ -168,7 +168,7 @@ class QwenService(AIService):
     def __init__(self):
         self.api_key = settings.DASHSCOPE_API_KEY
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
-        self.model = "qwen-turbo"
+        self.model = "qwen3.5-plus"
     
     async def _call_api(self, prompt: str) -> str:
         if not self.api_key:
